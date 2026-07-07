@@ -299,7 +299,7 @@ On non-LiDAR devices, RGB image capture remains available while depth capture is
 1. Clone the repository.
 
 ```bash
-git clone <repository-url>
+git clone [<repository-url>](https://github.com/Abu2005G/ARKit_Pipeline)
 ```
 
 2. Open the project in Xcode.
