@@ -18,6 +18,7 @@ public class ARViewModel: ObservableObject {
     @Published public var currentProjectName: String = ""
     @Published public var isExporting: Bool = false
     @Published public var exportURL: URL? = nil
+    @Published public var datasetSizeBytes: Int64 = 0
     
     public var session: ARSession { sessionManager.session }
     
@@ -66,6 +67,11 @@ public class ARViewModel: ObservableObject {
             .receive(on: RunLoop.main)
             .assign(to: \.exportURL, on: self)
             .store(in: &cancellables)
+        
+        captureController.sizeTracker.$totalBytes
+            .receive(on: RunLoop.main)
+            .assign(to: \.datasetSizeBytes, on: self)
+            .store(in: &cancellables)
     }
     
     public func startCapture() {
@@ -86,5 +92,9 @@ public class ARViewModel: ObservableObject {
     
     public func resetWorldOrigin() {
         sessionManager.reset()
+    }
+    
+    public var formattedDatasetSize: String {
+        ByteCountFormatter.string(fromByteCount: datasetSizeBytes, countStyle: .file)
     }
 }

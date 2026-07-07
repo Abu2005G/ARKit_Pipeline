@@ -19,24 +19,21 @@ public struct ARViewContainer: UIViewRepresentable {
     public func makeUIView(context: Context) -> ARView {
         let arView = ARView(frame: .zero)
         
-        #if canImport(ARKit) && !targetEnvironment(simulator)
-        // Create a default ARWorldTrackingConfiguration if available
-        if ARWorldTrackingConfiguration.isSupported {
-            let configuration = ARWorldTrackingConfiguration()
-            configuration.environmentTexturing = .automatic
-            if ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth) {
-                configuration.frameSemantics.insert(.sceneDepth)
-            }
-            arView.session.run(configuration)
-        }
+        // Assign the ARView's session to our session manager FIRST,
+        // then configure and run it. This ensures the delegate, the
+        // session manager, and the ARView all share the same ARSession.
+        viewModel.sessionManager.session = arView.session
+        arView.session.delegate = viewModel.sessionManager
+        
+        #if !targetEnvironment(simulator)
+        let configuration = viewModel.sessionManager.createARConfiguration()
+        arView.session.run(configuration)
         #endif
         
         arView.debugOptions = [.showWorldOrigin]
-        arView.session.delegate = (viewModel.sessionManager as! any ARSessionDelegate)
         
         return arView
     }
     
     public func updateUIView(_ uiView: ARView, context: Context) {}
 }
-

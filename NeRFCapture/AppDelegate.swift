@@ -14,13 +14,11 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
 
-        // Create the coordinating View Model
         let vm = ARViewModel()
         self.viewModel = vm
         
         let contentView = ContentView(viewModel: vm)
 
-        // Use a UIHostingController as window root view controller
         let window = UIWindow(frame: UIScreen.main.bounds)
         window.rootViewController = UIHostingController(rootView: contentView)
         self.window = window
@@ -30,22 +28,31 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     func applicationWillResignActive(_ application: UIApplication) {
-        // Suspend tracking and clean up any ongoing recording session
-        viewModel?.cancelCapture()
+        viewModel?.captureController.saveSettings()
     }
 
     func applicationDidEnterBackground(_ application: UIApplication) {
-        // Suspend tracking and clean up any ongoing recording session
+        // Cancel any active recording so partial data is cleaned up
         viewModel?.cancelCapture()
+        viewModel?.captureController.saveSettings()
+        // Pause the AR session to free GPU/camera resources
+        viewModel?.sessionManager.session.pause()
     }
 
     func applicationWillEnterForeground(_ application: UIApplication) {
-        // Resume tracking configuration
-        viewModel?.sessionManager.reset()
+        // Resume the existing AR session without resetting tracking.
+        // This keeps the world origin stable and avoids the camera going dark.
+        #if !targetEnvironment(simulator)
+        let configuration = viewModel?.sessionManager.createARConfiguration()
+        if let config = configuration {
+            viewModel?.sessionManager.session.run(config)
+        }
+        #endif
     }
 
     func applicationDidBecomeActive(_ application: UIApplication) {
-        // Ensure session is started
-        viewModel?.sessionManager.reset()
+        // Nothing needed here — the session is started in makeUIView on
+        // first launch, and resumed in applicationWillEnterForeground
+        // when coming back from background.
     }
 }

@@ -9,6 +9,8 @@ import Combine
 import UIKit
 import CoreVideo
 import Zip
+import CoreGraphics
+import ImageIO
 
 // MARK: - Capture Settings Model
 
@@ -20,13 +22,21 @@ public enum ImageFormat: String, Codable, CaseIterable, Identifiable {
 }
 
 public enum DepthFormat: String, Codable, CaseIterable, Identifiable {
-    case depth32f = ".depth32f"
+    case depth32f = "Float32 Raw (.depth32f)"
+    case grayscalePNG = "Grayscale 16-bit PNG"
     
     public var id: String { self.rawValue }
+    
+    public var fileExtension: String {
+        switch self {
+        case .depth32f: return "depth32f"
+        case .grayscalePNG: return "depth.png"
+        }
+    }
 }
 
 public enum CaptureInterval: Double, Codable, CaseIterable, Identifiable {
-    case continuous = 0.0 // 60 FPS
+    case continuous = 0.0
     case interval0_1 = 0.1
     case interval0_2 = 0.2
     case interval0_5 = 0.5
@@ -80,9 +90,12 @@ public struct CaptureSettings: Codable {
 // MARK: - Frame Writer
 
 public class FrameWriter {
-    private let writeQueue = DispatchQueue(label: "com.rgbd.spatialcapture.framewriter", qos: .background)
+    private let writeQueue = DispatchQueue(label: "com.rgbd.spatialcapture.framewriter", qos: .utility)
+    private let sizeTracker: DatasetSizeTracker
     
-    public init() {}
+    public init(sizeTracker: DatasetSizeTracker) {
+        self.sizeTracker = sizeTracker
+    }
     
     public func write(pixelBuffer: CVPixelBuffer, to url: URL, format: ImageFormat, jpegQuality: Double) {
         guard let pixelBufferCopy = deepCopy(pixelBuffer: pixelBuffer) else {
@@ -90,7 +103,7 @@ public class FrameWriter {
             return
         }
         
-        writeQueue.async {
+        writeQueue.async { [weak self] in
             let ciImage = CIImage(cvPixelBuffer: pixelBufferCopy)
             let context = CIContext(options: nil)
             guard let cgImage = context.createCGImage(ciImage, from: ciImage.extent) else {
@@ -110,8 +123,9 @@ public class FrameWriter {
             if let data = data {
                 do {
                     try data.write(to: url, options: .atomic)
+                    self?.sizeTracker.addBytes(Int64(data.count))
                 } catch {
-                    print("FrameWriter: Failed to write image data to \(url): \(error)")
+                    print("FrameWriter: Failed to write image: \(error)")
                 }
             }
         }
@@ -129,18 +143,8 @@ public class FrameWriter {
             kCVPixelBufferIOSurfacePropertiesKey: [:]
         ]
         
-        let status = CVPixelBufferCreate(
-            nil,
-            width,
-            height,
-            format,
-            attributes as CFDictionary,
-            &pixelBufferCopy
-        )
-        
-        guard status == kCVReturnSuccess, let copy = pixelBufferCopy else {
-            return nil
-        }
+        let status = CVPixelBufferCreate(nil, width, height, format, attributes as CFDictionary, &pixelBufferCopy)
+        guard status == kCVReturnSuccess, let copy = pixelBufferCopy else { return nil }
         
         CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
         CVPixelBufferLockBaseAddress(copy, [])
@@ -153,8 +157,7 @@ public class FrameWriter {
         if planeCount == 0 {
             if let destAddr = CVPixelBufferGetBaseAddress(copy),
                let srcAddr = CVPixelBufferGetBaseAddress(pixelBuffer) {
-                let bytes = CVPixelBufferGetBytesPerRow(pixelBuffer) * height
-                memcpy(destAddr, srcAddr, bytes)
+                memcpy(destAddr, srcAddr, CVPixelBufferGetBytesPerRow(pixelBuffer) * height)
             }
         } else {
             for plane in 0..<planeCount {
@@ -165,7 +168,6 @@ public class FrameWriter {
                 }
             }
         }
-        
         return copy
     }
 }
@@ -173,9 +175,12 @@ public class FrameWriter {
 // MARK: - Depth Writer
 
 public class DepthWriter {
-    private let writeQueue = DispatchQueue(label: "com.rgbd.spatialcapture.depthwriter", qos: .background)
+    private let writeQueue = DispatchQueue(label: "com.rgbd.spatialcapture.depthwriter", qos: .utility)
+    private let sizeTracker: DatasetSizeTracker
     
-    public init() {}
+    public init(sizeTracker: DatasetSizeTracker) {
+        self.sizeTracker = sizeTracker
+    }
     
     public func write(depthBuffer: CVPixelBuffer, to url: URL, format: DepthFormat) {
         guard let depthCopy = deepCopy(depthBuffer: depthBuffer) else {
@@ -183,28 +188,106 @@ public class DepthWriter {
             return
         }
         
-        writeQueue.async {
+        writeQueue.async { [weak self] in
+            CVPixelBufferLockBaseAddress(depthCopy, .readOnly)
+            defer { CVPixelBufferUnlockBaseAddress(depthCopy, .readOnly) }
+            
+            guard let baseAddress = CVPixelBufferGetBaseAddress(depthCopy) else {
+                print("DepthWriter: No base address for depth buffer")
+                return
+            }
+            
+            let width = CVPixelBufferGetWidth(depthCopy)
+            let height = CVPixelBufferGetHeight(depthCopy)
+            let count = width * height
+            let floatPtr = baseAddress.bindMemory(to: Float32.self, capacity: count)
+            
             switch format {
             case .depth32f:
-                CVPixelBufferLockBaseAddress(depthCopy, .readOnly)
-                defer { CVPixelBufferUnlockBaseAddress(depthCopy, .readOnly) }
-                
-                guard CVPixelBufferGetPixelFormatType(depthCopy) == kCVPixelFormatType_DepthFloat32,
-                      let baseAddress = CVPixelBufferGetBaseAddress(depthCopy) else {
-                    print("DepthWriter: Depth buffer is not Float32 depth format")
-                    return
-                }
-                
-                let width = CVPixelBufferGetWidth(depthCopy)
-                let height = CVPixelBufferGetHeight(depthCopy)
-                let count = width * height
-                let floatPtr = baseAddress.bindMemory(to: Float32.self, capacity: count)
                 let data = Data(bytes: floatPtr, count: count * MemoryLayout<Float32>.size)
-                
                 do {
                     try data.write(to: url, options: .atomic)
+                    self?.sizeTracker.addBytes(Int64(data.count))
                 } catch {
-                    print("DepthWriter: Failed to write float32 depth map: \(error)")
+                    print("DepthWriter: Failed to write float32 depth: \(error)")
+                }
+                
+            case .grayscalePNG:
+                // Convert Float32 depth to 16-bit grayscale PNG.
+                // IMPORTANT: Must read row-by-row using bytesPerRow stride,
+                // because CVPixelBuffer rows have padding bytes at the end.
+                let bytesPerRow = CVPixelBufferGetBytesPerRow(depthCopy)
+                let floatsPerRow = bytesPerRow / MemoryLayout<Float32>.size
+                
+                // First pass: find min/max for normalization (row-aware)
+                var minDepth: Float = .greatestFiniteMagnitude
+                var maxDepth: Float = 0.0
+                for row in 0..<height {
+                    let rowBase = baseAddress.advanced(by: row * bytesPerRow)
+                        .bindMemory(to: Float32.self, capacity: width)
+                    for col in 0..<width {
+                        let v = rowBase[col]
+                        if v.isFinite && v > 0 {
+                            minDepth = min(minDepth, v)
+                            maxDepth = max(maxDepth, v)
+                        }
+                    }
+                }
+                let range = maxDepth - minDepth
+                
+                // Second pass: normalize to 0–65535, store as big-endian UInt16
+                var pixels = [UInt16](repeating: 0, count: width * height)
+                for row in 0..<height {
+                    let rowBase = baseAddress.advanced(by: row * bytesPerRow)
+                        .bindMemory(to: Float32.self, capacity: width)
+                    for col in 0..<width {
+                        let v = rowBase[col]
+                        if v.isFinite && v > 0 && range > 0 {
+                            let normalized = (v - minDepth) / range
+                            let val = UInt16(min(max(normalized * 65535.0, 0), 65535))
+                            pixels[row * width + col] = val.bigEndian
+                        }
+                    }
+                }
+                
+                // Create a 16-bit grayscale CGImage and write as PNG
+                let outBytesPerRow = width * MemoryLayout<UInt16>.size
+                pixels.withUnsafeMutableBufferPointer { bufferPtr in
+                    guard let provider = CGDataProvider(data: Data(
+                        bytesNoCopy: bufferPtr.baseAddress!,
+                        count: width * height * MemoryLayout<UInt16>.size,
+                        deallocator: .none
+                    ) as CFData) else { return }
+                    
+                    guard let cgImage = CGImage(
+                        width: width,
+                        height: height,
+                        bitsPerComponent: 16,
+                        bitsPerPixel: 16,
+                        bytesPerRow: outBytesPerRow,
+                        space: CGColorSpaceCreateDeviceGray(),
+                        bitmapInfo: CGBitmapInfo(rawValue: CGImageByteOrderInfo.order16Big.rawValue),
+                        provider: provider,
+                        decode: nil,
+                        shouldInterpolate: false,
+                        intent: .defaultIntent
+                    ) else {
+                        print("DepthWriter: Failed to create 16-bit grayscale CGImage")
+                        return
+                    }
+                    
+                    let pngUTI = "public.png" as CFString
+                    guard let dest = CGImageDestinationCreateWithURL(url as CFURL, pngUTI, 1, nil) else {
+                        print("DepthWriter: Failed to create PNG destination")
+                        return
+                    }
+                    CGImageDestinationAddImage(dest, cgImage, nil)
+                    if CGImageDestinationFinalize(dest) {
+                        if let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
+                           let size = attrs[.size] as? Int64 {
+                            self?.sizeTracker.addBytes(size)
+                        }
+                    }
                 }
             }
         }
@@ -216,18 +299,8 @@ public class DepthWriter {
         let format = CVPixelBufferGetPixelFormatType(depthBuffer)
         
         var depthCopy: CVPixelBuffer? = nil
-        let status = CVPixelBufferCreate(
-            nil,
-            width,
-            height,
-            format,
-            nil,
-            &depthCopy
-        )
-        
-        guard status == kCVReturnSuccess, let copy = depthCopy else {
-            return nil
-        }
+        let status = CVPixelBufferCreate(nil, width, height, format, nil, &depthCopy)
+        guard status == kCVReturnSuccess, let copy = depthCopy else { return nil }
         
         CVPixelBufferLockBaseAddress(depthBuffer, .readOnly)
         CVPixelBufferLockBaseAddress(copy, [])
@@ -238,18 +311,51 @@ public class DepthWriter {
         
         if let destAddr = CVPixelBufferGetBaseAddress(copy),
            let srcAddr = CVPixelBufferGetBaseAddress(depthBuffer) {
-            let bytes = CVPixelBufferGetBytesPerRow(depthBuffer) * height
-            memcpy(destAddr, srcAddr, bytes)
+            memcpy(destAddr, srcAddr, CVPixelBufferGetBytesPerRow(depthBuffer) * height)
         }
-        
         return copy
+    }
+}
+
+// MARK: - Dataset Size Tracker
+
+public class DatasetSizeTracker: ObservableObject {
+    private let lock = NSLock()
+    private var accumulatedBytes: Int64 = 0
+    
+    @Published public var totalBytes: Int64 = 0
+    
+    public init() {}
+    
+    public func addBytes(_ bytes: Int64) {
+        lock.lock()
+        accumulatedBytes += bytes
+        let newTotal = accumulatedBytes
+        lock.unlock()
+        DispatchQueue.main.async {
+            self.totalBytes = newTotal
+        }
+    }
+    
+    public func reset() {
+        lock.lock()
+        accumulatedBytes = 0
+        lock.unlock()
+        DispatchQueue.main.async {
+            self.totalBytes = 0
+        }
+    }
+    
+    public var formattedSize: String {
+        return ByteCountFormatter.string(fromByteCount: totalBytes, countStyle: .file)
     }
 }
 
 // MARK: - Metadata Writer
 
 public class MetadataWriter {
-    private let writeQueue = DispatchQueue(label: "com.rgbd.spatialcapture.metadatawriter", qos: .background)
+    private let writeQueue = DispatchQueue(label: "com.rgbd.spatialcapture.metadatawriter", qos: .utility)
+    private let sizeTracker: DatasetSizeTracker
     
     public struct TransformsManifest: Codable {
         public var w: Int = 0
@@ -280,7 +386,9 @@ public class MetadataWriter {
     private var frames: [FrameItem] = []
     private let framesLock = NSLock()
     
-    public init() {}
+    public init(sizeTracker: DatasetSizeTracker) {
+        self.sizeTracker = sizeTracker
+    }
     
     public func startSession(projectDir: URL) {
         framesLock.lock()
@@ -305,31 +413,21 @@ public class MetadataWriter {
         let cx = frame.camera.intrinsics[2, 0]
         let cy = frame.camera.intrinsics[2, 1]
         let trackingState = trackingStateToString(frame.camera.trackingState)
-        
         let exposureDuration = frame.camera.exposureDuration
         let exposureOffset = frame.camera.exposureOffset
-        
         let depthWidth = frame.sceneDepth != nil ? CVPixelBufferGetWidth(frame.sceneDepth!.depthMap) : 0
         let depthHeight = frame.sceneDepth != nil ? CVPixelBufferGetHeight(frame.sceneDepth!.depthMap) : 0
         
         let item = FrameItem(
-            filePath: rgbPath,
-            depthPath: depthPath,
-            transformMatrix: transform,
-            timestamp: timestamp,
-            flX: flX,
-            flY: flY,
-            cx: cx,
-            cy: cy,
-            w: w,
-            h: h
+            filePath: rgbPath, depthPath: depthPath, transformMatrix: transform,
+            timestamp: timestamp, flX: flX, flY: flY, cx: cx, cy: cy, w: w, h: h
         )
         
         framesLock.lock()
         frames.append(item)
         framesLock.unlock()
         
-        writeQueue.async {
+        writeQueue.async { [weak self] in
             var metadata: [String: Any] = [
                 "frame_index": frameIndex,
                 "timestamp": timestamp,
@@ -341,19 +439,15 @@ public class MetadataWriter {
                 "exposure_duration": exposureDuration,
                 "exposure_offset": exposureOffset
             ]
-            
-            if let rgbPath = rgbPath {
-                metadata["file_path"] = rgbPath
-            }
-            if let depthPath = depthPath {
-                metadata["depth_path"] = depthPath
-            }
+            if let rgbPath = rgbPath { metadata["file_path"] = rgbPath }
+            if let depthPath = depthPath { metadata["depth_path"] = depthPath }
             
             if let jsonData = try? JSONSerialization.data(withJSONObject: metadata, options: [.prettyPrinted]) {
                 do {
                     try jsonData.write(to: url, options: .atomic)
+                    self?.sizeTracker.addBytes(Int64(jsonData.count))
                 } catch {
-                    print("MetadataWriter: Failed to write frame metadata to \(url): \(error)")
+                    print("MetadataWriter: Failed to write frame metadata: \(error)")
                 }
             }
         }
@@ -365,23 +459,11 @@ public class MetadataWriter {
         framesLock.unlock()
         
         writeQueue.async {
-            let w = framesToSave.first?.w ?? 0
-            let h = framesToSave.first?.h ?? 0
-            let flX = framesToSave.first?.flX ?? 1.0
-            let flY = framesToSave.first?.flY ?? 1.0
-            let cx = framesToSave.first?.cx ?? 0.0
-            let cy = framesToSave.first?.cy ?? 0.0
-            
             let manifest = TransformsManifest(
-                w: w,
-                h: h,
-                flX: flX,
-                flY: flY,
-                cx: cx,
-                cy: cy,
-                depthIntegerScale: 1.0,
-                depthSource: "LiDAR",
-                cameraModel: "PINHOLE",
+                w: framesToSave.first?.w ?? 0, h: framesToSave.first?.h ?? 0,
+                flX: framesToSave.first?.flX ?? 1.0, flY: framesToSave.first?.flY ?? 1.0,
+                cx: framesToSave.first?.cx ?? 0.0, cy: framesToSave.first?.cy ?? 0.0,
+                depthIntegerScale: 1.0, depthSource: "LiDAR", cameraModel: "PINHOLE",
                 frames: framesToSave
             )
             
@@ -391,13 +473,8 @@ public class MetadataWriter {
             
             let fileURL = projectDir.appendingPathComponent("transforms.json")
             if let data = try? encoder.encode(manifest) {
-                do {
-                    try data.write(to: fileURL, options: .atomic)
-                } catch {
-                    print("MetadataWriter: Failed to write transforms.json: \(error)")
-                }
+                try? data.write(to: fileURL, options: .atomic)
             }
-            
             completion()
         }
     }
@@ -431,13 +508,15 @@ public class CaptureController: NSObject, ARSessionManagerDelegate, ObservableOb
     @Published public var isRecording = false
     @Published public var savedFrameCount = 0
     @Published public var currentProjectName: String = ""
+    @Published public var datasetName: String = ""
     @Published public var isExporting = false
     @Published public var exportURL: URL? = nil
     
     public let sessionManager: ARSessionManager
-    private let frameWriter = FrameWriter()
-    private let depthWriter = DepthWriter()
-    private let metadataWriter = MetadataWriter()
+    public let sizeTracker = DatasetSizeTracker()
+    private lazy var frameWriter = FrameWriter(sizeTracker: sizeTracker)
+    private lazy var depthWriter = DepthWriter(sizeTracker: sizeTracker)
+    private lazy var metadataWriter = MetadataWriter(sizeTracker: sizeTracker)
     private let exporter = DatasetExporter()
     
     private var previousSavedTimestamp: TimeInterval = 0.0
@@ -455,14 +534,23 @@ public class CaptureController: NSObject, ARSessionManagerDelegate, ObservableOb
         
         let dateFormatter = DateFormatter()
         dateFormatter.dateFormat = "yyyyMMdd_HHmmss"
-        currentProjectName = "Capture_\(dateFormatter.string(from: Date()))"
+        let timestamp = dateFormatter.string(from: Date())
+        currentProjectName = "Capture_\(timestamp)"
+        
+        // Use custom name if provided, otherwise use default timestamp name
+        if datasetName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            datasetName = currentProjectName
+        }
         
         let docs = getDocumentsDirectory()
         let projectFolder = docs.appendingPathComponent(currentProjectName)
         self.projectDir = projectFolder
         
         do {
-            try FileManager.default.createDirectory(at: projectFolder.appendingPathComponent("images"), withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(
+                at: projectFolder.appendingPathComponent("images"),
+                withIntermediateDirectories: true
+            )
         } catch {
             print("CaptureController: Failed to create project folder: \(error)")
             return
@@ -471,9 +559,9 @@ public class CaptureController: NSObject, ARSessionManagerDelegate, ObservableOb
         savedFrameCount = 0
         previousSavedTimestamp = 0.0
         exportURL = nil
+        sizeTracker.reset()
         
         metadataWriter.startSession(projectDir: projectFolder)
-        
         isRecording = true
     }
     
@@ -482,14 +570,16 @@ public class CaptureController: NSObject, ARSessionManagerDelegate, ObservableOb
         isRecording = false
         
         guard let projectFolder = projectDir else { return }
-        
         isExporting = true
         
         metadataWriter.finalizeSession(projectDir: projectFolder) { [weak self] in
             guard let self = self else { return }
             
             if self.settings.autoExport {
-                self.exporter.export(projectDir: projectFolder, zipName: self.currentProjectName) { zipURL in
+                let zipName = self.datasetName.trimmingCharacters(in: .whitespacesAndNewlines)
+                    .isEmpty ? self.currentProjectName : self.datasetName
+                
+                self.exporter.export(projectDir: projectFolder, zipName: zipName) { zipURL in
                     DispatchQueue.main.async {
                         self.isExporting = false
                         self.exportURL = zipURL
@@ -510,7 +600,6 @@ public class CaptureController: NSObject, ARSessionManagerDelegate, ObservableOb
         previousSavedTimestamp = 0.0
         
         guard let projectFolder = projectDir else { return }
-        
         DispatchQueue.global(qos: .background).async {
             try? FileManager.default.removeItem(at: projectFolder)
         }
@@ -547,24 +636,21 @@ public class CaptureController: NSObject, ARSessionManagerDelegate, ObservableOb
         }
     }
     
-    public func arSessionManager(_ manager: ARSessionManager, didChangeTrackingState state: ARCamera.TrackingState) {
-    }
+    public func arSessionManager(_ manager: ARSessionManager, didChangeTrackingState state: ARCamera.TrackingState) {}
     
     private func saveFrameData(_ frame: ARFrame) {
         guard let projectFolder = projectDir else { return }
         
         if settings.maxDatasetSize != .unlimited && savedFrameCount >= settings.maxDatasetSize.rawValue {
-            DispatchQueue.main.async { [weak self] in
-                self?.stopCapture()
-            }
+            DispatchQueue.main.async { [weak self] in self?.stopCapture() }
             return
         }
         
         let frameIndex = savedFrameCount
         savedFrameCount += 1
         
-        let frameIndexStr = String(format: "%06d", frameIndex)
-        let baseImageName = "frame_\(frameIndexStr)"
+        let idx = String(format: "%06d", frameIndex)
+        let baseName = "frame_\(idx)"
         
         let hasDepth = frame.sceneDepth != nil && settings.depthEnabled && sessionManager.supportsDepth
         let hasRGB = settings.rgbEnabled
@@ -573,17 +659,16 @@ public class CaptureController: NSObject, ARSessionManagerDelegate, ObservableOb
         var rgbPath: String? = nil
         
         let imageExt = settings.imageFormat == .jpeg ? "jpg" : "png"
-        let rgbFileName = "\(baseImageName).\(imageExt)"
-        let depthFileName = "\(baseImageName).\(settings.depthFormat.rawValue)"
+        let rgbFileName = "\(baseName).\(imageExt)"
+        let depthFileName = "\(baseName).\(settings.depthFormat.fileExtension)"
         
         let imagesDir = projectFolder.appendingPathComponent("images")
         
         if hasRGB {
             rgbPath = "images/\(rgbFileName)"
-            let rgbURL = imagesDir.appendingPathComponent(rgbFileName)
             frameWriter.write(
                 pixelBuffer: frame.capturedImage,
-                to: rgbURL,
+                to: imagesDir.appendingPathComponent(rgbFileName),
                 format: settings.imageFormat,
                 jpegQuality: settings.jpegQuality
             )
@@ -591,21 +676,19 @@ public class CaptureController: NSObject, ARSessionManagerDelegate, ObservableOb
         
         if hasDepth, let sceneDepth = frame.sceneDepth {
             depthPath = "images/\(depthFileName)"
-            let depthURL = imagesDir.appendingPathComponent(depthFileName)
             depthWriter.write(
                 depthBuffer: sceneDepth.depthMap,
-                to: depthURL,
+                to: imagesDir.appendingPathComponent(depthFileName),
                 format: settings.depthFormat
             )
         }
         
-        let jsonURL = imagesDir.appendingPathComponent("\(baseImageName).json")
         metadataWriter.writeFrameMetadata(
             frame: frame,
             frameIndex: frameIndex,
             rgbPath: rgbPath,
             depthPath: depthPath,
-            to: jsonURL
+            to: imagesDir.appendingPathComponent("\(baseName).json")
         )
     }
     
@@ -620,20 +703,9 @@ public class CaptureController: NSObject, ARSessionManagerDelegate, ObservableOb
     
     public func loadSettings() {
         if let data = UserDefaults.standard.data(forKey: "captureSettings") {
-            do {
-                let decoder = JSONDecoder()
-                settings = try decoder.decode(CaptureSettings.self, from: data)
-            } catch {
-                print("CaptureController: Failed to load settings: \(error)")
-                settings = CaptureSettings()
+            if let decoded = try? JSONDecoder().decode(CaptureSettings.self, from: data) {
+                settings = decoded
             }
         }
     }
-}
-
-// MARK: - CVPixelBuffer Dimensions Helper
-
-extension CVPixelBuffer {
-    var width: Int { CVPixelBufferGetWidth(self) }
-    var height: Int { CVPixelBufferGetHeight(self) }
 }

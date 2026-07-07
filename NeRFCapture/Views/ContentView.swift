@@ -23,9 +23,16 @@ struct ContentView : View {
         )
     }
     
+    private var datasetNameBinding: Binding<String> {
+        Binding(
+            get: { viewModel.captureController.datasetName },
+            set: { viewModel.captureController.datasetName = $0 }
+        )
+    }
+    
     var body: some View {
         ZStack {
-            // AR Preview Container
+            // AR Camera Preview
             ARViewContainer(viewModel)
                 .edgesIgnoringSafeArea(.all)
             
@@ -33,9 +40,7 @@ struct ContentView : View {
             VStack {
                 // Top Bar
                 HStack {
-                    Button(action: {
-                        showSettings.toggle()
-                    }) {
+                    Button(action: { showSettings.toggle() }) {
                         Image(systemName: "gearshape.fill")
                             .font(.title2)
                             .padding(12)
@@ -49,7 +54,7 @@ struct ContentView : View {
                     
                     Spacer()
                     
-                    Text("RGB-D Spatial Capture")
+                    Text("RGB-D Capture")
                         .font(.headline)
                         .fontWeight(.bold)
                         .padding(.vertical, 8)
@@ -61,7 +66,6 @@ struct ContentView : View {
                     
                     Spacer()
                     
-                    // Invisible placeholder on the right for symmetry
                     Circle()
                         .fill(Color.clear)
                         .frame(width: 48, height: 48)
@@ -87,23 +91,39 @@ struct ContentView : View {
                                 .font(.caption)
                                 .foregroundColor(.green)
                         } else {
-                            Text("LiDAR Depth: Not Supported")
+                            Text("LiDAR Depth: Not Available")
                                 .font(.caption)
                                 .foregroundColor(.red)
                         }
                         
                         if viewModel.isRecording {
-                            Divider()
-                                .background(Color.white.opacity(0.3))
+                            Divider().background(Color.white.opacity(0.3))
                             
                             Text("Project: \(viewModel.currentProjectName)")
                                 .font(.caption)
                                 .fontWeight(.bold)
                             
-                            Text("Frames Captured: \(viewModel.savedFrameCount)")
-                                .font(.subheadline)
-                                .fontWeight(.bold)
-                                .foregroundColor(.orange)
+                            HStack(spacing: 12) {
+                                VStack(alignment: .leading) {
+                                    Text("Frames")
+                                        .font(.caption2)
+                                        .foregroundColor(.secondary)
+                                    Text("\(viewModel.savedFrameCount)")
+                                        .font(.subheadline)
+                                        .fontWeight(.bold)
+                                        .foregroundColor(.orange)
+                                }
+                                
+                                VStack(alignment: .leading) {
+                                    Text("Size")
+                                        .font(.caption2)
+                                        .foregroundColor(.secondary)
+                                    Text(viewModel.formattedDatasetSize)
+                                        .font(.subheadline)
+                                        .fontWeight(.bold)
+                                        .foregroundColor(.cyan)
+                                }
+                            }
                             
                             Text("Interval: \(viewModel.captureController.settings.captureInterval.displayName)")
                                 .font(.caption)
@@ -113,7 +133,7 @@ struct ContentView : View {
                     .padding(16)
                     .background(RoundedRectangle(cornerRadius: 16).fill(Color.black.opacity(0.7)))
                     .foregroundColor(.white)
-                    .frame(maxWidth: 240)
+                    .frame(maxWidth: 260)
                     .padding(.trailing, 20)
                 }
                 .padding(.top, 10)
@@ -122,11 +142,23 @@ struct ContentView : View {
                 
                 // Bottom Controls
                 VStack(spacing: 20) {
-                    // Export Share Link when ready
+                    // Dataset Name Field (before recording)
+                    if !viewModel.isRecording && viewModel.exportURL == nil {
+                        HStack {
+                            Image(systemName: "tag.fill")
+                                .foregroundColor(.gray)
+                            TextField("Dataset Name (optional)", text: datasetNameBinding)
+                                .textFieldStyle(RoundedBorderTextFieldStyle())
+                                .font(.subheadline)
+                                .autocapitalization(.none)
+                                .disableAutocorrection(true)
+                        }
+                        .padding(.horizontal, 40)
+                    }
+                    
+                    // Share Button
                     if let url = viewModel.exportURL {
-                        Button(action: {
-                            self.shareURL = url
-                        }) {
+                        Button(action: { self.shareURL = url }) {
                             HStack {
                                 Image(systemName: "square.and.arrow.up")
                                 Text("Share Captured Dataset")
@@ -141,10 +173,8 @@ struct ContentView : View {
                     }
                     
                     HStack(spacing: 30) {
-                        // Reset Alignment
-                        Button(action: {
-                            viewModel.resetWorldOrigin()
-                        }) {
+                        // Reset
+                        Button(action: { viewModel.resetWorldOrigin() }) {
                             VStack {
                                 Image(systemName: "arrow.triangle.2.circlepath")
                                     .font(.title2)
@@ -159,7 +189,7 @@ struct ContentView : View {
                         }
                         .disabled(viewModel.isRecording)
                         
-                        // Record/Capture Button
+                        // Record / Stop
                         Button(action: {
                             if viewModel.isRecording {
                                 viewModel.stopCapture()
@@ -185,11 +215,9 @@ struct ContentView : View {
                         }
                         .shadow(radius: 5)
                         
-                        // Manual Save Button (Only if Recording AND Manual Interval)
+                        // Manual Save (only shown in manual mode while recording)
                         if viewModel.isRecording && viewModel.captureController.settings.captureInterval == .manual {
-                            Button(action: {
-                                viewModel.triggerManualSave()
-                            }) {
+                            Button(action: { viewModel.triggerManualSave() }) {
                                 VStack {
                                     Image(systemName: "camera.fill")
                                         .font(.title2)
@@ -203,12 +231,10 @@ struct ContentView : View {
                                 .foregroundColor(.white)
                             }
                         } else {
-                            // Invisible placeholder for alignment
+                            // Invisible spacer for alignment
                             VStack {
-                                Image(systemName: "camera.fill")
-                                    .font(.title2)
-                                Text("Save Frame")
-                                    .font(.caption)
+                                Image(systemName: "camera.fill").font(.title2)
+                                Text("Save Frame").font(.caption)
                             }
                             .opacity(0)
                             .padding(.horizontal, 16)
@@ -219,7 +245,7 @@ struct ContentView : View {
                 }
             }
             
-            // Export Spinner Overlay
+            // Export Overlay
             if viewModel.isExporting {
                 Color.black.opacity(0.75)
                     .edgesIgnoringSafeArea(.all)
@@ -253,7 +279,6 @@ struct ContentView : View {
     }
 }
 
-// Helper to make URL conform to Identifiable for sheets
 extension URL: @retroactive Identifiable {
     public var id: String { self.absoluteString }
 }
@@ -265,6 +290,5 @@ struct ShareSheet: UIViewControllerRepresentable {
     func makeUIViewController(context: Context) -> UIActivityViewController {
         UIActivityViewController(activityItems: activityItems, applicationActivities: applicationActivities)
     }
-
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }

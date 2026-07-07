@@ -1,53 +1,67 @@
-# NeRF Capture 
-<img src="docs/assets_readme/NeRFCaptureReal.png" height="342"/><img src="docs/assets_readme/NeRFCaptureSample.gif" height="342"/> 
+# RGB-D Capture
 
+RGB-D Capture is a professional dataset acquisition application for iOS designed specifically for Computer Vision researchers. It transforms your iPhone or iPad into a spatial data capture tool, making it easy to build synchronized RGB-D datasets for Robotics, SLAM, 3D Gaussian Splatting, SplaTAM, and Neural Reconstruction.
 
-Collecting NeRF datasets is difficult. NeRF Capture is an iOS application that allows any iPhone or iPad to quickly collect or stream posed images to [InstantNGP](https://github.com/NVlabs/instant-ngp). If your device has a LiDAR, the depth images will be saved/streamed as well. The app has two modes: Offline and Online. In Offline mode, the dataset is saved to the device and can be accessed in the Files App in the NeRFCapture folder. Online mode uses [CycloneDDS](https://github.com/eclipse-cyclonedds/cyclonedds) to publish the posed images on the network. A Python script then collects the images and provides them to InstantNGP.
+<img src="docs/assets_readme/AppIcon.png" height="200" />
 
-<a href="https://apps.apple.com/us/app/nerfcapture/id6446518379?itsct=apps_box_badge&amp;itscg=30200" style="display: inline-block; overflow: hidden; border-radius: 13px; width: 150px; height: 53px;"><img src="https://tools.applemediaservices.com/api/badges/download-on-the-app-store/black/en-us?size=250x83&amp;releaseDate=1679443200" alt="Download on the App Store" style="border-radius: 13px; width: 150px; height: 53px;"></a>
+*(Note: RGB-D Capture is a fork and complete reimagining of the original [NeRFCapture](https://github.com/jc211/NeRFCapture) project, now optimized for general-purpose spatial computing research.)*
 
+---
 
+## Features
 
-## Online Mode
+- **Precise Timing Controls**: Capture data at specific time intervals (0.1s, 0.2s, 0.5s, 1.0s), continuously (60 FPS), or manually using a shutter button.
+- **Synchronized Data Streams**: Simultaneously records RGB frames, Depth maps (if LiDAR is available), 6-DoF Camera Poses, Camera Intrinsics, and timestamps.
+- **Multiple Depth Formats**: 
+  - `Float32 Raw (.depth32f)` for absolute physical accuracy (meters).
+  - `Grayscale 16-bit PNG` for immediate compatibility with standard SLAM and visualization pipelines.
+- **Export Control**: Capable of saving huge datasets directly to device storage. Real-time file size tracking lets you monitor dataset size, and everything is bundled into a neatly named `.zip` archive on device for easy sharing via AirDrop, Email, or Files.
 
-<img src="docs/assets_readme/NeRFCaptureScreenshot.png" height="342"/>
+## Usage
 
-Use the Reset button to reset the coordinate system to the current position of the camera. This takes a while; wait until the tracking initialized before moving away.
+1. **Launch the App**: When you open the application, it will begin initializing AR tracking. Ensure the area is well lit.
+2. **Configure Settings**: Tap the gear icon in the top left to open Settings.
+   - **Capture Interval**: Choose how often frames should be saved. For walking scans, `0.2 sec` or `0.5 sec` is recommended to reduce dataset size.
+   - **Depth Format**: Choose between raw 32-bit floats or normalized 16-bit grayscale PNGs.
+   - **Max Dataset Size**: Limit the maximum number of frames to prevent running out of storage.
+3. **Capture**: 
+   - Enter a custom dataset name at the bottom of the screen if desired.
+   - Tap the large record button. The HUD will display the number of frames saved and the current size of the dataset on disk.
+   - If using `Manual` mode, tap the orange "Save Frame" button to capture individual viewpoints.
+4. **Export**: Stop the recording. The app will compile your images and a `transforms.json` file into a ZIP archive. Tap the **Share Captured Dataset** button to AirDrop it to your computer.
 
-Switch the app to online mode. On the computer running InstantNGP, make sure that CycloneDDS is installed in the same python environment that is running pyngp. OpenCV and Pillow are needed to save and resize images.
+## Dataset Structure
 
-```
-pip install cyclonedds
-```
+The exported ZIP archive unzips into a folder containing:
 
-Check that the computer can see the device on your network by running in your terminal:
-
-```
-cyclonedds ps
-```
-
-Instructions found in [here](https://github.com/NVlabs/instant-ngp/blob/master/docs/nerf_dataset_tips.md#NeRFCapture)
-
-
-## Offline Mode
-
-In Offline mode, clicking start initializes the dataset. Take a few images then click End when you're done. The dataset can be found as a zip file in your Files App in the format that InstantNGP expects. Unzip the dataset and drag and drop it into InstantNGP. We have found it farely difficult to get files transferred from an iOS device to another computer so we recommend running the app in Online mode and collecting the dataset with the nerfcapture2nerf.py script found in InstantNGP.
-
-<img src="docs/assets_readme/NeRFCaptureFile1.png" height="342"/>
-<img src="docs/assets_readme/NeRFCaptureFile2.png" height="342"/>
-
-## Citation
-
-If you use this software in your research, please consider citing it. 
-```bibtex
-@misc{
-  NeRFCapture,
-  url={https://github.com/jc211/NeRFCapture},
-  journal={NeRFCapture},
-  author={Abou-Chakra, Jad},
-  year={2023},
-  month={Mar}
-} 
+```text
+DatasetName/
+├── transforms.json
+└── images/
+    ├── frame_000000.jpg
+    ├── frame_000000.depth.png (or .depth32f)
+    ├── frame_000000.json
+    ├── frame_000001.jpg
+    ├── frame_000001.depth.png (or .depth32f)
+    ├── frame_000001.json
+    ...
 ```
 
+- **`images/frame_xxxxxx.json`**: Contains per-frame metadata (timestamp, pose transform, intrinsics matrix, exposure data).
+- **`transforms.json`**: A master manifest file aggregating all poses and camera intrinsics for the entire sequence, formatted similarly to the standard NeRF `transforms.json` but containing full spatial matrices for general SLAM integration.
 
+## Requirements
+
+- **iOS 15.0+**
+- For depth capture, a device equipped with a **LiDAR scanner** (e.g., iPhone 12 Pro or newer, iPad Pro) is required. RGB-only capture will function on non-LiDAR devices.
+
+## Building from Source
+
+1. Clone this repository.
+2. Open the project in Xcode.
+3. Select your development team in the project settings.
+4. Build and run on your iOS device.
+
+## Acknowledgements
+
+This project was built upon the foundation of [NeRFCapture](https://github.com/jc211/NeRFCapture) by Jad Abou-Chakra. It has been extensively modified to serve as a general-purpose RGB-D dataset generator rather than a streaming client for InstantNGP.
