@@ -1,8 +1,6 @@
 //
-//  ARView.swift
-//  NeRFCapture
-//
-//  Created by Jad Abou-Chakra on 13/7/2022.
+//  ARViewContainer.swift
+//  RGB-D Spatial Capture
 //
 
 import SwiftUI
@@ -11,36 +9,34 @@ import RealityKit
 import ARKit
 #endif
 
-struct ARViewContainer: UIViewRepresentable {
+public struct ARViewContainer: UIViewRepresentable {
     @ObservedObject var viewModel: ARViewModel
     
-    init(_ vm: ARViewModel) {
+    public init(_ vm: ARViewModel) {
         viewModel = vm
     }
     
-    func makeUIView(context: Context) -> ARView {
+    public func makeUIView(context: Context) -> ARView {
         let arView = ARView(frame: .zero)
-        #if canImport(ARKit)
-        let configuration = viewModel.createARConfiguration()
-        configuration.worldAlignment = .gravity
-        configuration.isAutoFocusEnabled = true
-
-        if ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth) {
-            viewModel.appState.supportsDepth = true
+        
+        #if canImport(ARKit) && !targetEnvironment(simulator)
+        // Create a default ARWorldTrackingConfiguration if available
+        if ARWorldTrackingConfiguration.isSupported {
+            let configuration = ARWorldTrackingConfiguration()
+            configuration.environmentTexturing = .automatic
+            if ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth) {
+                configuration.frameSemantics.insert(.sceneDepth)
+            }
+            arView.session.run(configuration)
         }
-
-        #if !targetEnvironment(simulator)
-        arView.session.run(configuration)
         #endif
-        #endif
-
+        
         arView.debugOptions = [.showWorldOrigin]
-        arView.session.delegate = viewModel
-        viewModel.session = arView.session
-        viewModel.arView = arView
+        arView.session.delegate = (viewModel.sessionManager as! any ARSessionDelegate)
+        
         return arView
     }
     
-    func updateUIView(_ uiView: ARView, context: Context) {}
-    
+    public func updateUIView(_ uiView: ARView, context: Context) {}
 }
+

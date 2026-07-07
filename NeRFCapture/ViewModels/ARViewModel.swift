@@ -1,114 +1,90 @@
 //
 //  ARViewModel.swift
-//  NeRFCapture
-//
-//  Created by Jad Abou-Chakra on 13/7/2022.
+//  RGB-D Spatial Capture
 //
 
 import Foundation
-import Zip
 import Combine
 import ARKit
-import RealityKit
 
-enum AppError : Error {
-    case projectAlreadyExists
-    case manifestInitializationFailed
-}
-
-class ARViewModel : NSObject, ARSessionDelegate, ObservableObject {
-    @Published var appState = AppState()
-    var session: ARSession? = nil
-    var arView: ARView? = nil
-//    let frameSubject = PassthroughSubject<ARFrame, Never>()
-    var cancellables = Set<AnyCancellable>()
-    let datasetWriter: DatasetWriter
-    let ddsWriter: DDSWriter
+public class ARViewModel: ObservableObject {
+    public let sessionManager: ARSessionManager
+    public let captureController: CaptureController
     
-    init(datasetWriter: DatasetWriter, ddsWriter: DDSWriter) {
-        self.datasetWriter = datasetWriter
-        self.ddsWriter = ddsWriter
-        super.init()
-        self.setupObservers()
-        self.ddsWriter.setupDDS()
+    @Published public var trackingState: String = "Not Available"
+    @Published public var supportsDepth: Bool = false
+    @Published public var isRecording: Bool = false
+    @Published public var savedFrameCount: Int = 0
+    @Published public var currentProjectName: String = ""
+    @Published public var isExporting: Bool = false
+    @Published public var exportURL: URL? = nil
+    
+    public var session: ARSession { sessionManager.session }
+    
+    private var cancellables = Set<AnyCancellable>()
+    
+    public init() {
+        let manager = ARSessionManager()
+        self.sessionManager = manager
+        self.captureController = CaptureController(sessionManager: manager)
+        
+        setupObservers()
     }
     
-    func setupObservers() {
-        datasetWriter.$writerState.sink {x in self.appState.writerState = x} .store(in: &cancellables)
-        datasetWriter.$currentFrameCounter.sink { x in self.appState.numFrames = x }.store(in: &cancellables)
-        ddsWriter.$peers.sink {x in self.appState.ddsPeers = UInt32(x)}.store(in: &cancellables)
-        
-        $appState
-            .map(\.appMode)
-            .prepend(appState.appMode)
-            .removeDuplicates()
-            .sink { x in
-                switch x {
-                case .Offline:
-//                    self.appState.stream = false
-                    print("Changed to offline")
-                case .Online:
-                    print("Changed to online")
-                }
-            }
+    private func setupObservers() {
+        sessionManager.$trackingState
+            .receive(on: RunLoop.main)
+            .assign(to: \.trackingState, on: self)
             .store(in: &cancellables)
         
-//        frameSubject.throttle(for: 0.5, scheduler: RunLoop.main, latest: true).sink {
-//            f in
-//            if self.appState.stream && self.appState.appMode == .Online {
-//                self.ddsWriter.writeFrameToTopic(frame: f)
-//            }
-//        }.store(in: &cancellables)
+        sessionManager.$supportsDepth
+            .receive(on: RunLoop.main)
+            .assign(to: \.supportsDepth, on: self)
+            .store(in: &cancellables)
+        
+        captureController.$isRecording
+            .receive(on: RunLoop.main)
+            .assign(to: \.isRecording, on: self)
+            .store(in: &cancellables)
+        
+        captureController.$savedFrameCount
+            .receive(on: RunLoop.main)
+            .assign(to: \.savedFrameCount, on: self)
+            .store(in: &cancellables)
+        
+        captureController.$currentProjectName
+            .receive(on: RunLoop.main)
+            .assign(to: \.currentProjectName, on: self)
+            .store(in: &cancellables)
+        
+        captureController.$isExporting
+            .receive(on: RunLoop.main)
+            .assign(to: \.isExporting, on: self)
+            .store(in: &cancellables)
+        
+        captureController.$exportURL
+            .receive(on: RunLoop.main)
+            .assign(to: \.exportURL, on: self)
+            .store(in: &cancellables)
     }
     
-    
-    private func selectBestWideAngleVideoFormat() -> ARVideoFormat? {
-        let supportedFormats = ARWorldTrackingConfiguration.supportedVideoFormats
-
-        return supportedFormats.max { lhs, rhs in
-            let lhsPixels = lhs.imageResolution.width * lhs.imageResolution.height
-            let rhsPixels = rhs.imageResolution.width * rhs.imageResolution.height
-            if lhsPixels != rhsPixels {
-                return lhsPixels < rhsPixels
-            }
-            return lhs.framesPerSecond < rhs.framesPerSecond
-        }
-    }
-
-    func createARConfiguration() -> ARWorldTrackingConfiguration {
-        let configuration = ARWorldTrackingConfiguration()
-        configuration.worldAlignment = .gravity
-        configuration.isAutoFocusEnabled = true
-
-        if type(of: configuration).supportsFrameSemantics(.sceneDepth) {
-            configuration.frameSemantics = .sceneDepth
-            appState.supportsDepth = true
-        } else {
-            appState.supportsDepth = false
-        }
-
-        if let bestFormat = selectBestWideAngleVideoFormat() {
-            configuration.videoFormat = bestFormat
-        }
-
-        return configuration
+    public func startCapture() {
+        captureController.startCapture()
     }
     
-    func resetWorldOrigin() {
-        session?.pause()
-        let config = createARConfiguration()
-        session?.run(config, options: [.resetTracking])
+    public func stopCapture() {
+        captureController.stopCapture()
     }
     
-    
-    func session(
-        _ session: ARSession,
-        didUpdate frame: ARFrame
-    ) {
-//        frameSubject.send(frame)
+    public func cancelCapture() {
+        captureController.cancelCapture()
     }
     
-    func session(_ session: ARSession, cameraDidChangeTrackingState camera: ARCamera) {
-        self.appState.trackingState = trackingStateToString(camera.trackingState)
+    public func triggerManualSave() {
+        captureController.triggerManualSave()
+    }
+    
+    public func resetWorldOrigin() {
+        sessionManager.reset()
     }
 }
