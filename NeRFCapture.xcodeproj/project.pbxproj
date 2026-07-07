@@ -429,7 +429,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = NeRFCapture/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = "NeRF Capture";
+				INFOPLIST_KEY_CFBundleDisplayName = "RGB-D Capture";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
 				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
 				INFOPLIST_KEY_NSCameraUsageDescription = "";
@@ -470,7 +470,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = NeRFCapture/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = "NeRF Capture";
+				INFOPLIST_KEY_CFBundleDisplayName = "RGB-D Capture";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
 				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
 				INFOPLIST_KEY_NSCameraUsageDescription = "";

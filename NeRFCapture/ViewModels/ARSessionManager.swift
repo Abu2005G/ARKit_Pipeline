@@ -7,6 +7,7 @@ import Foundation
 import ARKit
 import Combine
 
+
 public protocol ARSessionManagerDelegate: AnyObject {
     func arSessionManager(_ manager: ARSessionManager, didUpdateFrame frame: ARFrame)
     func arSessionManager(_ manager: ARSessionManager, didChangeTrackingState state: ARCamera.TrackingState)

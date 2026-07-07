@@ -537,13 +537,13 @@ public class CaptureController: NSObject, ARSessionManagerDelegate, ObservableOb
         let timestamp = dateFormatter.string(from: Date())
         currentProjectName = "Capture_\(timestamp)"
         
-        // Use custom name if provided, otherwise use default timestamp name
-        if datasetName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            datasetName = currentProjectName
-        }
+        let finalName = datasetName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? currentProjectName : datasetName.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        // Update currentProjectName to the final name so the UI reflects it
+        currentProjectName = finalName
         
         let docs = getDocumentsDirectory()
-        let projectFolder = docs.appendingPathComponent(currentProjectName)
+        let projectFolder = docs.appendingPathComponent(finalName)
         self.projectDir = projectFolder
         
         do {
@@ -576,10 +576,7 @@ public class CaptureController: NSObject, ARSessionManagerDelegate, ObservableOb
             guard let self = self else { return }
             
             if self.settings.autoExport {
-                let zipName = self.datasetName.trimmingCharacters(in: .whitespacesAndNewlines)
-                    .isEmpty ? self.currentProjectName : self.datasetName
-                
-                self.exporter.export(projectDir: projectFolder, zipName: zipName) { zipURL in
+                self.exporter.export(projectDir: projectFolder, zipName: self.currentProjectName) { zipURL in
                     DispatchQueue.main.async {
                         self.isExporting = false
                         self.exportURL = zipURL
