@@ -6,9 +6,6 @@ RGB-D Capture is an iOS application for acquiring synchronized RGB-D datasets us
 
 Designed for researchers, students, and developers, RGB-D Capture transforms a LiDAR-equipped iPhone or iPad into a portable RGB-D data acquisition system for building datasets suitable for SLAM, neural scene reconstruction, and 3D perception.
 
-<p align="center">
-  <img src="docs/assets_readme/AppIcon.png" width="220"/>
-</p>
 
 ---
 
@@ -299,7 +296,7 @@ On non-LiDAR devices, RGB image capture remains available while depth capture is
 1. Clone the repository.
 
 ```bash
-git clone [<repository-url>](https://github.com/Abu2005G/ARKit_Pipeline)
+git clone (https://github.com/Abu2005G/ARKit_Pipeline)
 ```
 
 2. Open the project in Xcode.
