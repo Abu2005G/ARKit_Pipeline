@@ -1,67 +1,338 @@
 # RGB-D Capture
 
-RGB-D Capture is a professional dataset acquisition application for iOS designed specifically for Computer Vision researchers. It transforms your iPhone or iPad into a spatial data capture tool, making it easy to build synchronized RGB-D datasets for Robotics, SLAM, 3D Gaussian Splatting, SplaTAM, and Neural Reconstruction.
+### Professional RGB-D Dataset Acquisition for Spatial AI, SLAM, and 3D Reconstruction
 
-<img src="docs/assets_readme/AppIcon.png" height="200" />
+RGB-D Capture is an iOS application for acquiring synchronized RGB-D datasets using Apple's ARKit. It records RGB images, metric depth maps, camera poses, camera intrinsics, and timestamps, producing datasets that can be used directly in computer vision, robotics, and spatial AI research.
 
-*(Note: RGB-D Capture is a fork and complete reimagining of the original [NeRFCapture](https://github.com/jc211/NeRFCapture) project, now optimized for general-purpose spatial computing research.)*
+Designed for researchers, students, and developers, RGB-D Capture transforms a LiDAR-equipped iPhone or iPad into a portable RGB-D data acquisition system for building datasets suitable for SLAM, neural scene reconstruction, and 3D perception.
+
+<p align="center">
+  <img src="docs/assets_readme/AppIcon.png" width="220"/>
+</p>
 
 ---
 
-## Features
+# Features
 
-- **Precise Timing Controls**: Capture data at specific time intervals (0.1s, 0.2s, 0.5s, 1.0s), continuously (60 FPS), or manually using a shutter button.
-- **Synchronized Data Streams**: Simultaneously records RGB frames, Depth maps (if LiDAR is available), 6-DoF Camera Poses, Camera Intrinsics, and timestamps.
-- **Multiple Depth Formats**: 
-  - `Float32 Raw (.depth32f)` for absolute physical accuracy (meters).
-  - `Grayscale 16-bit PNG` for immediate compatibility with standard SLAM and visualization pipelines.
-- **Export Control**: Capable of saving huge datasets directly to device storage. Real-time file size tracking lets you monitor dataset size, and everything is bundled into a neatly named `.zip` archive on device for easy sharing via AirDrop, Email, or Files.
+## High-Quality RGB-D Capture
 
-## Usage
+* Capture synchronized RGB images and depth maps
+* Record 6-DoF camera poses for every frame
+* Save camera intrinsic parameters
+* Store precise timestamps for each capture
+* Automatic ARKit-based camera tracking
 
-1. **Launch the App**: When you open the application, it will begin initializing AR tracking. Ensure the area is well lit.
-2. **Configure Settings**: Tap the gear icon in the top left to open Settings.
-   - **Capture Interval**: Choose how often frames should be saved. For walking scans, `0.2 sec` or `0.5 sec` is recommended to reduce dataset size.
-   - **Depth Format**: Choose between raw 32-bit floats or normalized 16-bit grayscale PNGs.
-   - **Max Dataset Size**: Limit the maximum number of frames to prevent running out of storage.
-3. **Capture**: 
-   - Enter a custom dataset name at the bottom of the screen if desired.
-   - Tap the large record button. The HUD will display the number of frames saved and the current size of the dataset on disk.
-   - If using `Manual` mode, tap the orange "Save Frame" button to capture individual viewpoints.
-4. **Export**: Stop the recording. The app will compile your images and a `transforms.json` file into a ZIP archive. Tap the **Share Captured Dataset** button to AirDrop it to your computer.
+---
 
-## Dataset Structure
+## Flexible Capture Modes
 
-The exported ZIP archive unzips into a folder containing:
+Choose the acquisition method best suited to your dataset.
+
+* **Continuous Capture** (up to 60 FPS)
+* **Timed Capture**
+
+  * 0.1 seconds
+  * 0.2 seconds
+  * 0.5 seconds
+  * 1.0 second
+* **Manual Capture** using a shutter button
+
+This allows efficient dataset collection for handheld scanning, robotics experiments, and controlled laboratory captures.
+
+---
+
+## Multiple Depth Formats
+
+### Float32 Raw (`.depth32f`)
+
+* Metric depth values stored as 32-bit floating-point numbers
+* Preserves absolute depth measurements in meters
+* Recommended for:
+
+  * SLAM
+  * 3D Gaussian Splatting
+  * Neural Radiance Fields (NeRF)
+  * SplaTAM
+  * 3D reconstruction
+  * Quantitative evaluation
+
+### 16-bit Depth PNG (`.depth.png`)
+
+* Normalized 16-bit grayscale depth image
+* Convenient for visualization and standard image-processing pipelines
+* Recommended for:
+
+  * OpenCV
+  * Dataset inspection
+  * Debugging
+  * Traditional vision workflows
+
+---
+
+## Dataset Export
+
+Every recording is automatically organized into a portable dataset.
+
+Features include:
+
+* Automatic dataset naming
+* Real-time dataset size monitoring
+* Frame counter
+* ZIP archive generation
+* Native sharing through AirDrop, Files, Email, and other iOS sharing services
+
+---
+
+# Supported Workflows
+
+RGB-D Capture produces datasets suitable for a wide range of computer vision applications, including:
+
+* 3D Gaussian Splatting
+* SplaTAM
+* Neural Radiance Fields (NeRF)
+* ORB-SLAM3
+* KinectFusion
+* ElasticFusion
+* TSDF Fusion
+* Open3D
+* Robotics research
+* Custom computer vision pipelines
+
+---
+
+# Capture Pipeline
+
+```text
+        LiDAR iPhone / iPad
+                 │
+                 ▼
+              ARKit
+                 │
+      ┌──────────┼──────────┐
+      │          │          │
+     RGB       Depth      Tracking
+      │          │          │
+      └──────────┼──────────┘
+                 │
+                 ▼
+      Camera Pose + Intrinsics
+                 │
+                 ▼
+        Dataset Generation
+                 │
+                 ▼
+             ZIP Archive
+```
+
+---
+
+# Usage
+
+## 1. Launch the Application
+
+Open RGB-D Capture.
+
+The application initializes ARKit tracking automatically.
+
+For best results:
+
+* Scan in a well-lit environment.
+* Move the device smoothly.
+* Allow ARKit a few seconds to establish tracking.
+
+---
+
+## 2. Configure Capture Settings
+
+Open the **Settings** panel.
+
+Configure:
+
+### Capture Interval
+
+Choose how frequently frames are saved.
+
+Recommended values:
+
+| Scenario                    | Interval   |
+| --------------------------- | ---------- |
+| Walking scan                | 0.2 s      |
+| Indoor mapping              | 0.5 s      |
+| Static scene                | Manual     |
+| Maximum temporal resolution | Continuous |
+
+---
+
+### Depth Format
+
+Choose either:
+
+* Float32 Raw
+* 16-bit PNG
+
+---
+
+### Maximum Dataset Size
+
+Limit the number of captured frames to avoid exhausting device storage.
+
+---
+
+## 3. Capture a Dataset
+
+1. Enter an optional dataset name.
+2. Press **Record**.
+3. Move around the scene.
+
+The recording HUD displays:
+
+* Captured frames
+* Dataset size
+* Recording status
+
+In **Manual Mode**, press **Save Frame** whenever a viewpoint should be recorded.
+
+---
+
+## 4. Export
+
+Stop the recording.
+
+RGB-D Capture automatically:
+
+* Finalizes metadata
+* Generates `transforms.json`
+* Packages the dataset into a ZIP archive
+
+Share the archive directly through:
+
+* AirDrop
+* Files
+* Email
+* Any supported iOS sharing destination
+
+---
+
+# Dataset Structure
+
+Each exported dataset follows the structure below.
 
 ```text
 DatasetName/
+│
 ├── transforms.json
+│
 └── images/
     ├── frame_000000.jpg
-    ├── frame_000000.depth.png (or .depth32f)
+    ├── frame_000000.depth32f
+    ├── frame_000000.depth.png
     ├── frame_000000.json
+    │
     ├── frame_000001.jpg
-    ├── frame_000001.depth.png (or .depth32f)
+    ├── frame_000001.depth32f
+    ├── frame_000001.depth.png
     ├── frame_000001.json
-    ...
+    │
+    └── ...
 ```
 
-- **`images/frame_xxxxxx.json`**: Contains per-frame metadata (timestamp, pose transform, intrinsics matrix, exposure data).
-- **`transforms.json`**: A master manifest file aggregating all poses and camera intrinsics for the entire sequence, formatted similarly to the standard NeRF `transforms.json` but containing full spatial matrices for general SLAM integration.
+## File Descriptions
 
-## Requirements
+### `frame_xxxxxx.jpg`
 
-- **iOS 15.0+**
-- For depth capture, a device equipped with a **LiDAR scanner** (e.g., iPhone 12 Pro or newer, iPad Pro) is required. RGB-only capture will function on non-LiDAR devices.
+RGB image captured by the device camera.
 
-## Building from Source
+---
 
-1. Clone this repository.
+### `frame_xxxxxx.depth32f`
+
+Raw metric depth values stored as 32-bit floating-point numbers.
+
+---
+
+### `frame_xxxxxx.depth.png`
+
+Normalized 16-bit depth image for visualization and compatibility with traditional image-processing tools.
+
+---
+
+### `frame_xxxxxx.json`
+
+Per-frame metadata including:
+
+* Timestamp
+* Camera pose
+* Camera intrinsic matrix
+* Exposure information
+
+---
+
+### `transforms.json`
+
+Global dataset metadata containing:
+
+* Camera intrinsics
+* Camera poses
+* Frame references
+* Spatial transforms
+
+The format is compatible with the standard NeRF `transforms.json` structure while extending it with complete spatial information suitable for SLAM and general computer vision applications.
+
+---
+
+# Requirements
+
+* iOS 15.0 or later
+* Xcode 15 or later
+
+For RGB-D capture, a LiDAR-equipped device is required, including:
+
+* iPhone 12 Pro and newer Pro models
+* Supported iPad Pro models
+
+On non-LiDAR devices, RGB image capture remains available while depth capture is disabled.
+
+---
+
+# Building from Source
+
+1. Clone the repository.
+
+```bash
+git clone <repository-url>
+```
+
 2. Open the project in Xcode.
-3. Select your development team in the project settings.
-4. Build and run on your iOS device.
 
-## Acknowledgements
+3. Select your Apple Development Team.
 
-This project was built upon the foundation of [NeRFCapture](https://github.com/jc211/NeRFCapture) by Jad Abou-Chakra. It has been extensively modified to serve as a general-purpose RGB-D dataset generator rather than a streaming client for InstantNGP.
+4. Build and run on a physical iOS device.
+
+---
+
+# Roadmap
+
+Planned features include:
+
+* Continuous video recording with synchronized RGB-D data
+* IMU data export
+* Live point cloud visualization
+* ROS bag export
+* COLMAP export
+* Nerfstudio dataset exporter
+* Direct 3D Gaussian Splatting dataset export
+* Additional dataset statistics and validation tools
+
+---
+
+# Acknowledgements
+
+RGB-D Capture originated from the excellent NeRFCapture project by Jad Abou-Chakra. While inspired by its initial architecture, the project has evolved into an independent RGB-D dataset acquisition platform focused on general-purpose spatial computing, robotics, SLAM, and 3D vision research.
+
+---
+
+# License
+
+This project is released under the MIT License.
+
+See the `LICENSE` file for details.
